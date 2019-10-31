@@ -17,6 +17,10 @@
       integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
       crossorigin="anonymous"
     />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
     <style>
       .card-btn-container {
         width: 100%;
@@ -40,10 +44,11 @@
     <script type="text/babel">
       const API = 'https://acme-users-api-rev.herokuapp.com/api';
 
-      const fetchUser = async () => {
+      const fetchUser = async newUserId => {
+        console.log('userId ', newUserId);
         const storage = window.localStorage;
         const userId = storage.getItem('userId');
-        if (userId) {
+        if (userId && !newUserId) {
           try {
             return (await axios.get(`${API}/users/detail/${userId}`)).data;
           } catch (ex) {
@@ -51,9 +56,17 @@
             return fetchUser();
           }
         }
-        const user = (await axios.get(`${API}/users/random`)).data;
-        storage.setItem('userId', user.id);
-        return user;
+        let newUser;
+        if (newUserId) {
+          newUser = (await axios.get(`${API}/users`)).data.users.filter(
+            thisUser => thisUser.id === newUserId
+          )[0];
+          console.log('new user = ', newUser);
+        } else {
+          newUser = (await axios.get(`${API}/users/random`)).data;
+        }
+        storage.setItem('userId', newUser.id);
+        return newUser;
       };
 
       const { render } = ReactDOM;
@@ -103,6 +116,7 @@
         const archived = notes.filter(note => note.archived);
         return (
           <nav className="navbar navbar-dark bg-dark">
+            <Link to="/home">Home</Link>
             <Link to="/notes" className={path === '/notes' ? 'selected' : ''}>
               Notes ({notes.length - archived.length})
             </Link>
@@ -117,6 +131,9 @@
               className={path === '/notes/create' ? 'selected' : ''}
             >
               Create
+            </Link>
+            <Link to="/login">
+              <i className="material-icons">account_circle</i>
             </Link>
           </nav>
         );
@@ -211,6 +228,64 @@
         }
       }
 
+      class Home extends React.Component {
+        constructor() {
+          super();
+        }
+        render() {
+          return <div>Home</div>;
+        }
+      }
+
+      class Login extends React.Component {
+        constructor(props) {
+          console.log(props);
+          super();
+          this.state = {
+            users: [],
+            loginUser: props.loginUser
+          };
+        }
+        async fetchUsers() {
+          const users = (await axios.get(`${API}/users`)).data.users;
+          this.setState({ users });
+        }
+        componentDidMount = () => {
+          this.fetchUsers();
+        };
+        render() {
+          console.log(this.state);
+          const { users, loginUser } = this.state;
+          return (
+            <div>
+              <h3>Login</h3>
+              <form>
+                <div className="form-group">
+                  <label htmlFor="user-select"></label>
+                  <select
+                    onChange={ev => {
+                      console.log(ev.target.value);
+                      loginUser(ev.target.value);
+                    }}
+                    className="form-control"
+                  >
+                    {users.length > 0 ? (
+                      users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.fullName}
+                        </option>
+                      ))
+                    ) : (
+                      <option>No Users to select</option>
+                    )}
+                  </select>
+                </div>
+              </form>
+            </div>
+          );
+        }
+      }
+
       class App extends Component {
         constructor() {
           super();
@@ -221,6 +296,7 @@
           this.update = this.update.bind(this);
           this.create = this.create.bind(this);
           this.destroy = this.destroy.bind(this);
+          this.loginUser = this.loginUser.bind(this);
         }
         async destroy(note) {
           await axios.delete(
@@ -232,6 +308,11 @@
         }
         async componentDidMount() {
           const user = await fetchUser();
+          const notes = (await axios.get(`${API}/users/${user.id}/notes`)).data;
+          this.setState({ notes, user });
+        }
+        async loginUser(userId) {
+          const user = await fetchUser(userId);
           const notes = (await axios.get(`${API}/users/${user.id}/notes`)).data;
           this.setState({ notes, user });
         }
@@ -256,7 +337,7 @@
         }
         render() {
           const { notes, user } = this.state;
-          const { update, create, destroy } = this;
+          const { update, create, destroy, loginUser } = this;
           console.log('user in the app ', user);
           return (
             <HashRouter>
@@ -265,7 +346,6 @@
                   <Nav path={location.pathname} notes={notes} />
                 )}
               />
-              <h3>Acme Note--taker for {user.id ? user.fullName : ''}</h3>
               <Switch>
                 <Route
                   exact
@@ -303,7 +383,12 @@
                     <Update {...props} userId={user.id} update={update} />
                   )}
                 />
-                <Redirect to="/notes" />
+                <Route path="/home" component={Home} />
+                <Route
+                  path="/login"
+                  render={() => <Login loginUser={loginUser} />}
+                />
+                <Redirect to="/home" />
               </Switch>
             </HashRouter>
           );
